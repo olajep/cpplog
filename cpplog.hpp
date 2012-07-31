@@ -6,7 +6,6 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
-#include <strstream>
 #include <fstream>
 #include <sstream>
 #include <cstring>
@@ -260,11 +259,8 @@ namespace cpplog
     // when the destructor is called.
     struct LogData
     {
-        // Constant.
-        static const size_t k_logBufferSize = 20000;
-
         // Our stream to log data to.
-        std::ostrstream stream;
+        std::stringstream stream;
 
         // Captured data.
         unsigned int level;
@@ -280,12 +276,10 @@ namespace cpplog
         helpers::thread_id_t  threadId;
 #endif
 
-        // Buffer for our text.
-        char buffer[k_logBufferSize];
 
         // Constructor that initializes our stream.
         LogData(loglevel_t logLevel)
-            : stream(buffer, k_logBufferSize), level(logLevel)
+            : stream(), level(logLevel)
 #ifdef CPPLOG_SYSTEM_IDS
               , processId(0), threadId(0)
 #endif
@@ -406,12 +400,13 @@ namespace cpplog
             if( !m_flushed )
             {
                 // Check if we have a newline.
-                char lastChar = m_logData->buffer[m_logData->stream.pcount() - 1];
+                long pos = m_logData->stream.tellg();
+                m_logData->stream.seekg(-1, std::ios_base::end);
+                char lastChar = m_logData->stream.peek();
+                m_logData->stream.seekg(pos);
                 if( lastChar != '\n' )
                     m_logData->stream << std::endl;
 
-                // Null-terminate.
-                m_logData->stream << '\0';
 
                 // Save the log level.
                 loglevel_t savedLogLevel = m_logData->level;
@@ -479,7 +474,7 @@ namespace cpplog
 
         virtual bool sendLogMessage(LogData* logData)
         {
-            m_logStream << logData->buffer;
+            m_logStream << logData->stream.str();
             m_logStream << std::flush;
 
             return true;
