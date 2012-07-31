@@ -12,6 +12,8 @@
 #include <ctime>
 #include <vector>
 #include <cstdlib>
+#include <streambuf>
+#include <ostream>
 
 // The following #define's will change the behaviour of this library.
 //      #define CPPLOG_FILTER_LEVEL     <level>
@@ -255,12 +257,48 @@ namespace cpplog
         };
     };
 
+    // reserved_streambuf allows us to reserve the buffer size upon
+    // construction and exposes the otherwise protected buffer pointer getters.
+    // This makes it possible to avoid extra allocs and copying.
+    class reserved_streambuf : public std::basic_streambuf<char, std::char_traits<char> >
+    {
+    public:
+        reserved_streambuf(std::streamsize length)
+            : m_buffer(new char[length])
+        {
+            // Use allocated buffer as backing store.
+            setp(m_buffer, m_buffer + length);
+        }
+
+        ~reserved_streambuf()
+        {
+            delete [] m_buffer;
+        }
+
+        // Expose otherwise protected buffer pointer getters.
+        const char* pubpbase() const { return pbase(); }
+        const char* pubpptr()  const { return pptr();  }
+        const char* pubepptr() const { return epptr(); }
+
+        std::streamsize length() const
+        {
+            return pptr()-pbase();
+        }
+
+    private:
+        char* m_buffer;
+    };
+
     // Logger data.  This is sent to a logger when a LogMessage is Flush()'ed, or
     // when the destructor is called.
     struct LogData
     {
-        // Our stream to log data to.
-        std::stringstream stream;
+        // Constant.
+        static const size_t k_logBufferSize = 20000;
+
+        // Our streambuf & stream to log data to.
+        reserved_streambuf streamBuffer;
+        std::ostream stream;
 
         // Captured data.
         unsigned int level;
@@ -279,7 +317,7 @@ namespace cpplog
 
         // Constructor that initializes our stream.
         LogData(loglevel_t logLevel)
-            : stream(), level(logLevel)
+            : streamBuffer(k_logBufferSize), stream(&streamBuffer), level(logLevel)
 #ifdef CPPLOG_SYSTEM_IDS
               , processId(0), threadId(0)
 #endif
@@ -407,13 +445,21 @@ namespace cpplog
             if( !m_flushed )
             {
                 // Check if we have a newline.
-                long pos = m_logData->stream.tellg();
-                m_logData->stream.seekg(-1, std::ios_base::end);
-                char lastChar = m_logData->stream.peek();
-                m_logData->stream.seekg(pos);
-                if( lastChar != '\n' )
-                    m_logData->stream << std::endl;
+                const std::streamsize length = m_logData->streamBuffer.length();
+                const char *lastChar = m_logData->streamBuffer.pubpptr() - 1;
 
+                // Make sure lastChar is within buffer before dereferencing it.
+                if( length > 0 )
+                {
+                    // Insert newline if needed.
+                    if( *lastChar != '\n' )
+                        m_logData->streamBuffer.sputc('\n');
+                }
+                else
+                {
+                    // Insert newline if buffer is empty.
+                    m_logData->streamBuffer.sputc('\n');
+                }
 
                 // Save the log level.
                 loglevel_t savedLogLevel = m_logData->level;
@@ -481,7 +527,10 @@ namespace cpplog
 
         virtual bool sendLogMessage(LogData* logData)
         {
-            m_logStream << logData->stream.str();
+            const char *buf = logData->streamBuffer.pubpbase();
+            const std::streamsize length = logData->streamBuffer.length();
+
+            m_logStream.write(buf, length);
             m_logStream << std::flush;
 
             return true;

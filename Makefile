@@ -5,7 +5,7 @@ INCLUDES=-I/usr/local/include
 LIBS=-L/usr/local/lib -lboost_thread-mt -lboost_system-mt
 
 CC=g++
-CFLAGS=-c -Wall
+CFLAGS=-c -std=c++11 -O2 -Wall -Wextra
 OBJECTS=$(SOURCES:.cpp=.o)
 DEFINES=-DCPPLOG_THREADING -DCPPLOG_SYSTEM_IDS
 
