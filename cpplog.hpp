@@ -291,7 +291,7 @@ namespace cpplog
 #ifdef CPPLOG_SYSTEM_IDS
 			// Get process/thread ID.
 			m_logData->processId	= boost::interprocess::ipcdetail::get_current_process_id();
-			m_logData->threadId		= (unsigned long)boost::interprocess::ipcdetail::get_current_thread_id();
+			m_logData->threadId		= static_cast<unsigned long>(boost::interprocess::ipcdetail::get_current_thread_id());
 #endif
 			
 			InitLogMessage();
