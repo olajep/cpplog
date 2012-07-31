@@ -171,7 +171,7 @@ namespace cpplog
 			VoidStreamClass() { }
 			void operator&(std::ostream&) { }
 		};
-	};
+	}
 
 	// Logger data.  This is sent to a logger when a LogMessage is Flush()'ed, or
 	// when the destructor is called.
@@ -505,7 +505,7 @@ namespace cpplog
 			bool deleteMessage = OstreamLogger::sendLogMessage(logData);
 
 			// Check if we're over our limit.
-			if( m_outStream.tellp() > m_maxSize )
+			if( m_outStream.tellp() > static_cast<signed>(m_maxSize) )
 			{
 				// Yep, increment our log number and rotate.
 				m_logNumber++;
@@ -576,7 +576,7 @@ namespace cpplog
 			::time(&currTime);
 
 			// Is the difference greater than our number of seconds?
-			if( (unsigned long)difftime(currTime, m_lastRotateTime) > m_rotateInterval )
+			if( static_cast<unsigned long>(difftime(currTime, m_lastRotateTime)) > m_rotateInterval )
 			{
 				// Yep, increment our log number and rotate.
 				m_logNumber++;
@@ -903,8 +903,8 @@ namespace cpplog
 		};
 
 		// TODO: Implement others?
-	};
-};
+	}
+}
 
 // Our logging macros.
 
