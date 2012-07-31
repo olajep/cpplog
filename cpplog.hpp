@@ -78,6 +78,12 @@
 #include "outputdebugstream.hpp"
 #endif
 
+#ifdef _DEBUG
+extern "C" {
+#include <stdlib.h>
+}
+#endif
+
 #ifdef CPPLOG_WITH_SCRIBE_LOGGER
 #include "scribestream.hpp"
 #endif
