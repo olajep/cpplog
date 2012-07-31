@@ -225,10 +225,13 @@ namespace cpplog
 	{
 	private:
 		BaseLogger*		m_logger;
-		LogData*		m_logData;
 		bool			m_flushed;
 		bool			m_deleteMessage;
 
+	protected:
+		LogData*		m_logData;
+
+	private:
 		// Flag for if a fatal message has been logged already.
 		// This prevents us from calling exit(), which calls something,
 		// which then logs a fatal message, which cause an infinite loop.
@@ -250,10 +253,10 @@ namespace cpplog
 			Init(file, line, logLevel);
 		}
 
-		LogMessage(const char* file, unsigned int line, loglevel_t logLevel, BaseLogger& outputLogger)
+		LogMessage(const char* file, unsigned int line, loglevel_t logLevel, BaseLogger& outputLogger, bool doInitLogMessage=true)
 			: m_logger(&outputLogger)
 		{
-			Init(file, line, logLevel);
+			Init(file, line, logLevel, doInitLogMessage);
 		}
 
 		virtual ~LogMessage()
@@ -271,8 +274,25 @@ namespace cpplog
 			return m_logData->stream;
 		}
 
+	protected:
+		virtual void InitLogMessage()
+		{
+			// Log process ID and thread ID.
+#ifdef CPPLOG_SYSTEM_IDS
+			m_logData->stream << "["
+						<< std::right << std::setfill('0') << std::setw(8) << std::hex
+						<< m_logData->processId << "."
+						<< std::setfill('0') << std::setw(8) << std::hex
+						<< m_logData->threadId << "] ";
+#endif
+
+			m_logData->stream << std::setfill(' ') << std::setw(5) << std::left << std::dec
+						<< LogMessage::getLevelName(m_logData->level) << " - "
+						<< m_logData->fileName << "(" << m_logData->line << "): ";
+		}
+
 	private:
-		void Init(const char* file, unsigned int line, loglevel_t logLevel)
+		void Init(const char* file, unsigned int line, loglevel_t logLevel, bool doInitLogMessage=true)
 		{
 			m_logData = new LogData(logLevel);
 			m_flushed = false;
@@ -293,24 +313,11 @@ namespace cpplog
 			m_logData->processId	= boost::interprocess::ipcdetail::get_current_process_id();
 			m_logData->threadId		= static_cast<unsigned long>(boost::interprocess::ipcdetail::get_current_thread_id());
 #endif
-			
-			InitLogMessage();
-		}
-		
-		void InitLogMessage()
-		{
-			// Log process ID and thread ID.
-#ifdef CPPLOG_SYSTEM_IDS
-			m_logData->stream << "[" 
-						<< std::right << std::setfill('0') << std::setw(8) << std::hex 
-						<< m_logData->processId << "."
-						<< std::setfill('0') << std::setw(8) << std::hex 
-						<< m_logData->threadId << "] ";
-#endif
 
-			m_logData->stream << std::setfill(' ') << std::setw(5) << std::left << std::dec 
-						<< LogMessage::getLevelName(m_logData->level) << " - " 
-						<< m_logData->fileName << "(" << m_logData->line << "): ";
+			if (doInitLogMessage)
+			{
+				InitLogMessage();
+			}
 		}
 
 		void Flush()
@@ -382,7 +389,7 @@ namespace cpplog
 	// Generic class - logs to a given std::ostream.
 	class OstreamLogger : public BaseLogger
 	{
-	private:
+	protected:
 		std::ostream&	m_logStream;
 
 	public:
@@ -909,7 +916,10 @@ namespace cpplog
 // Our logging macros.
 
 // Default macros - log, and don't log something.
+// Allow custom log message formatting
+#ifndef LOG_LEVEL
 #define LOG_LEVEL(level, logger)	cpplog::LogMessage(__FILE__, __LINE__, (level), logger).getStream()
+#endif
 #define LOG_NOTHING(level, logger)	true ? (void)0 : cpplog::helpers::VoidStreamClass() & LOG_LEVEL(level, logger)
 
 // Series of debug macros, depending on what we log.
