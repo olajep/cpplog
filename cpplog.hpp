@@ -257,22 +257,18 @@ namespace cpplog
         };
     };
 
-    // reserved_streambuf allows us to reserve the buffer size upon
-    // construction and exposes the otherwise protected buffer pointer getters.
+    // fixed_streambuf exposes the otherwise protected buffer pointer getters.
     // This makes it possible to avoid extra allocs and copying.
-    class reserved_streambuf : public std::basic_streambuf<char, std::char_traits<char> >
+    class fixed_streambuf : public std::basic_streambuf<char, std::char_traits<char> >
     {
     public:
-        reserved_streambuf(std::streamsize length)
-            : m_buffer(new char[length])
+        // Constant.
+        static const size_t k_logBufferSize = 20000;
+
+        fixed_streambuf()
         {
             // Use allocated buffer as backing store.
-            setp(m_buffer, m_buffer + length);
-        }
-
-        ~reserved_streambuf()
-        {
-            delete [] m_buffer;
+            setp(m_buffer, m_buffer + k_logBufferSize);
         }
 
         // Expose otherwise protected buffer pointer getters.
@@ -286,18 +282,16 @@ namespace cpplog
         }
 
     private:
-        char* m_buffer;
+        char m_buffer[k_logBufferSize];
     };
 
     // Logger data.  This is sent to a logger when a LogMessage is Flush()'ed, or
     // when the destructor is called.
     struct LogData
     {
-        // Constant.
-        static const size_t k_logBufferSize = 20000;
 
         // Our streambuf & stream to log data to.
-        reserved_streambuf streamBuffer;
+        fixed_streambuf streamBuffer;
         std::ostream stream;
 
         // Captured data.
@@ -317,7 +311,7 @@ namespace cpplog
 
         // Constructor that initializes our stream.
         LogData(loglevel_t logLevel)
-            : streamBuffer(k_logBufferSize), stream(&streamBuffer), level(logLevel)
+            : streamBuffer(), stream(&streamBuffer), level(logLevel)
 #ifdef CPPLOG_SYSTEM_IDS
               , processId(0), threadId(0)
 #endif
