@@ -279,7 +279,7 @@ namespace cpplog
 
             std::streamsize length()   const { return pptr()-pbase();         }
             std::streamsize capacity() const { return k_logBufferCapacity;    }
-            bool empty()               const { return length() != 0;          }
+            bool empty()               const { return length() == 0;          }
             bool full()                const { return length() == capacity(); }
 
             // Unput one character.
