@@ -255,34 +255,64 @@ namespace cpplog
             VoidStreamClass() { }
             void operator&(std::ostream&) { }
         };
-    };
 
-    // fixed_streambuf exposes the otherwise protected buffer pointer getters.
-    // This makes it possible to avoid extra allocs and copying.
-    class fixed_streambuf : public std::basic_streambuf<char, std::char_traits<char> >
-    {
-    public:
-        // Constant.
-        static const size_t k_logBufferSize = 20000;
-
-        fixed_streambuf()
+        // fixed_streambuf is a minimal implementation around std::basic_streambuf
+        // with a fixed size backing buffer. It implements additional functionality
+        // needed by cpplog and exposes the backing buffer in a safe way via c_str().
+        // This makes it possible to avoid extra copying.
+        class fixed_streambuf : public std::basic_streambuf<char, std::char_traits<char> >
         {
-            // Use allocated buffer as backing store.
-            setp(m_buffer, m_buffer + k_logBufferSize);
-        }
+        private:
+            // Constant.
+            static const size_t k_logBufferCapacity = 20000;
+            // Leave room for terminating null character in case buffer fills up.
+            char m_buffer[k_logBufferCapacity+1];
 
-        // Expose otherwise protected buffer pointer getters.
-        const char* pubpbase() const { return pbase(); }
-        const char* pubpptr()  const { return pptr();  }
-        const char* pubepptr() const { return epptr(); }
+        public:
+            fixed_streambuf()
+            {
+                // Use allocated buffer as backing store.
+                setp(m_buffer, m_buffer + k_logBufferCapacity);
+                // Insert terminator at buffer end.
+                m_buffer[k_logBufferCapacity] = '\0';
+            }
 
-        std::streamsize length() const
-        {
-            return pptr()-pbase();
-        }
+            std::streamsize length()   const { return pptr()-pbase();         }
+            std::streamsize capacity() const { return k_logBufferCapacity;    }
+            bool empty()               const { return length() != 0;          }
+            bool full()                const { return length() == capacity(); }
 
-    private:
-        char m_buffer[k_logBufferSize];
+            // Unput one character.
+            int_type sunputc()
+            {
+                if ( (!pptr()) || (pptr()==pbase()) )
+                    return pbackfail();
+
+                pbump(-1);
+
+                // This is safe because *epptr() always is '\0' and inside
+                // the backing buffer.
+                return traits_type::to_int_type(*(pptr()+1));
+            }
+
+            // Peek at last inserted character.
+            int peek() const
+            {
+                if ( (!pptr()) || (pptr()==pbase()) )
+                    return std::char_traits<char>::eof();
+
+                return static_cast<int>(*(pptr()-1));
+            }
+
+            const char* c_str() const
+            {
+                // Add terminating null character.
+                // This is safe even if the buffer is full to its capacity since
+                // epptr() is inside the backing buffer.
+                *pptr() = '\0';
+                return pbase();
+            }
+        };
     };
 
     // Logger data.  This is sent to a logger when a LogMessage is Flush()'ed, or
@@ -291,7 +321,7 @@ namespace cpplog
     {
 
         // Our streambuf & stream to log data to.
-        fixed_streambuf streamBuffer;
+        helpers::fixed_streambuf streamBuffer;
         std::ostream stream;
 
         // Captured data.
@@ -438,21 +468,16 @@ namespace cpplog
         {
             if( !m_flushed )
             {
-                // Check if we have a newline.
-                const std::streamsize length = m_logData->streamBuffer.length();
-                const char *lastChar = m_logData->streamBuffer.pubpptr() - 1;
+                // Insert newline, if needed.
+                helpers::fixed_streambuf* const sb = &m_logData->streamBuffer;
+                if( sb->peek() != '\n' )
+                {
+                    // If buffer is full, remove last char to leave room for newline.
+                    if (sb->full())
+                        sb->sunputc();
 
-                // Make sure lastChar is within buffer before dereferencing it.
-                if( length > 0 )
-                {
-                    // Insert newline if needed.
-                    if( *lastChar != '\n' )
-                        m_logData->streamBuffer.sputc('\n');
-                }
-                else
-                {
-                    // Insert newline if buffer is empty.
-                    m_logData->streamBuffer.sputc('\n');
+                    // Insert newline
+                    sb->sputc('\n');
                 }
 
                 // Save the log level.
@@ -521,10 +546,8 @@ namespace cpplog
 
         virtual bool sendLogMessage(LogData* logData)
         {
-            const char *buf = logData->streamBuffer.pubpbase();
-            const std::streamsize length = logData->streamBuffer.length();
-
-            m_logStream.write(buf, length);
+            helpers::fixed_streambuf* const sb = &logData->streamBuffer;
+            m_logStream.write(sb->c_str(), sb->length());
             m_logStream << std::flush;
 
             return true;
